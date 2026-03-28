@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>勝敗カウンター</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@500&family=Inter:wght@800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 900px;
+    height: 200px;
+    background: transparent;
+    overflow: hidden;
+  }
+
+  .widget {
+    width: 900px;
+    height: 200px;
+    background: rgba(38, 40, 46, 0.95);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .widget::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    z-index: 10;
+  }
+
+  /* ── スライダー（2パネル） ── */
+  .slider {
+    display: flex;
+    width: 400%;  /* 4パネル分確保（ループ用） */
+    height: 100%;
+    transition: transform 0.65s cubic-bezier(0.65, 0, 0.35, 1);
+  }
+
+  .panel {
+    width: 900px;
+    height: 200px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 64px;
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━
+     パネル1: 勝敗数 + 勝率 + ゲージ
+  ━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .panel-1 {
+    gap: 0;
+    justify-content: space-between;
+    align-items: stretch;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+
+  /* 左: WIN / LOSS カウンター */
+  .counts {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .count-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .count-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 36px;
+    letter-spacing: 0.2em;
+    color: #6883BA;
+    margin-bottom: 2px;
+  }
+  .count-lbl.w { color: #BC2C1A; }
+  .count-num {
+    font-family: 'Inter', sans-serif;
+    font-size: 90px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+  }
+  .count-num.bump { animation: bump 0.35s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes bump {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.1); }
+  }
+  .count-sep {
+    font-family: 'Inter', sans-serif;
+    font-size: 56px;
+    font-weight: 900;
+    color: rgba(255,255,255,0.1);
+    margin-top: 24px;
+  }
+  .count-block.flash-win  { animation: fW 0.4s ease; }
+  .count-block.flash-loss { animation: fL 0.4s ease; }
+  @keyframes fW { 0% { opacity:0.3; } 100% { opacity:1; } }
+  @keyframes fL { 0% { opacity:0.3; } 100% { opacity:1; } }
+
+  /* 右: 勝率 + ゲージ */
+  .rate-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    flex: 1;
+    max-width: 420px;
+    padding-left: 60px;
+  }
+  .rate-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .rate-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 36px;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.3);
+  }
+  .rate-pct {
+    font-family: 'Inter', sans-serif;
+    font-size: 64px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+  }
+  .rate-detail {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.1em;
+    align-self: flex-end;
+    padding-bottom: 8px;
+  }
+  .rate-bar-bg {
+    height: 6px;
+    background: #6883BA;
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .rate-bar-fill {
+    height: 100%;
+    background: #BC2C1A;
+    border-radius: 99px;
+    transition: width 0.7s cubic-bezier(0.65,0,0.35,1);
+    box-shadow: 0 0 8px rgba(188,44,26,0.4);
+  }
+
+  /* ━━━━━━━━━━━━━━━━━━━━━━━━━
+     パネル2: 連勝(敗) + 直近10試合
+  ━━━━━━━━━━━━━━━━━━━━━━━━━ */
+  .panel-2 {
+    gap: 0;
+    justify-content: space-between;
+    align-items: stretch;
+    padding-top: 20px;
+    padding-bottom: 20px;
+  }
+
+  /* 左: ストリーク */
+  .streak-side {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    min-width: 260px;
+  }
+  .streak-words {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+  .streak-word {
+    font-family: 'DM Mono', monospace;
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.35);
+    line-height: 1.1;
+  }
+  .streak-num {
+    font-family: 'Inter', sans-serif;
+    font-size: 110px;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+  }
+  .streak-lbl {
+    display: none;
+  }
+
+  /* 仕切り */
+  .vdivider {
+    width: 1px;
+    background: rgba(255,255,255,0.08);
+    align-self: stretch;
+    margin: 0 52px;
+  }
+
+  /* 右: 直近10試合 */
+  .history-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 10px;
+    flex: 1;
+  }
+  .history-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 36px;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.3);
+  }
+  .pips {
+    display: flex;
+    gap: 8px;
+  }
+  .pip {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: transparent;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: all 0.2s;
+  }
+  .pip.show {
+    opacity: 1; transform: scale(1);
+    animation: popIn 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes popIn {
+    from { opacity:0; transform:scale(0.3); }
+    to   { opacity:1; transform:scale(1); }
+  }
+  .pip.w { background: #BC2C1A; color: #fff; border-color: transparent; }
+  .pip.l { background: #6883BA; color: #fff; border-color: transparent; }
+
+  /* ── インジケーター ── */
+  .indicator {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+  }
+  .dot-ind {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: background 0.3s, transform 0.3s;
+  }
+  .dot-ind.active { background: rgba(255,255,255,0.7); transform: scale(1.3); }
+
+  /* ── トースト ── */
+  .toast {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    display: flex; justify-content: center;
+    pointer-events: none; z-index: 999;
+  }
+  .toast-inner {
+    padding: 8px 32px;
+    border-radius: 0 0 12px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0;
+    transform: translateY(-100%);
+    transition: opacity 0.2s, transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    background: rgba(255,255,255,0.9);
+    color: #000;
+  }
+  .toast-inner.show { opacity: 1; transform: translateY(0); }
+  .toast-inner.loss { background: rgba(255,255,255,0.2); color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="widget">
+  <div class="slider" id="slider">
+
+    <!-- パネルA: 勝敗数 + 勝率 -->
+    <div class="panel panel-1">
+      <div class="counts">
+        <div class="count-block" id="winBlock">
+          <div class="count-lbl w">WIN</div>
+          <div class="count-num" id="winVal">0</div>
+        </div>
+        <div class="count-sep">/</div>
+        <div class="count-block" id="lossBlock">
+          <div class="count-lbl">LOSS</div>
+          <div class="count-num" id="lossVal">0</div>
+        </div>
+      </div>
+      <div class="rate-side">
+        <div class="rate-top">
+          <div>
+            <div class="rate-lbl">WIN RATE</div>
+            <div class="rate-pct" id="ratePct">—</div>
+          </div>
+          <div class="rate-detail" id="rateSub">0W  0L</div>
+        </div>
+        <div class="rate-bar-bg">
+          <div class="rate-bar-fill" id="rateBar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- パネルB: 連勝(敗) + 直近10試合 -->
+    <div class="panel panel-2">
+      <div class="streak-side">
+        <div class="streak-words" id="streakWords">
+          <span class="streak-word">WIN</span>
+          <span class="streak-word">CHAIN</span>
+        </div>
+        <div class="streak-num" id="streakNum">—</div>
+        <div class="streak-lbl" id="streakLbl" style="display:none"></div>
+      </div>
+      <div class="vdivider"></div>
+      <div class="history-side">
+        <div class="history-lbl">LAST 10</div>
+        <div class="pips">
+          <div class="pip" id="h0"></div>
+          <div class="pip" id="h1"></div>
+          <div class="pip" id="h2"></div>
+          <div class="pip" id="h3"></div>
+          <div class="pip" id="h4"></div>
+          <div class="pip" id="h5"></div>
+          <div class="pip" id="h6"></div>
+          <div class="pip" id="h7"></div>
+          <div class="pip" id="h8"></div>
+          <div class="pip" id="h9"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- パネルA clone（ループ用） -->
+    <div class="panel panel-1">
+      <div class="counts">
+        <div class="count-block">
+          <div class="count-lbl w">WIN</div>
+          <div class="count-num" id="winVal2">0</div>
+        </div>
+        <div class="count-sep">/</div>
+        <div class="count-block">
+          <div class="count-lbl">LOSS</div>
+          <div class="count-num" id="lossVal2">0</div>
+        </div>
+      </div>
+      <div class="rate-side">
+        <div class="rate-top">
+          <div>
+            <div class="rate-lbl">WIN RATE</div>
+            <div class="rate-pct" id="ratePct2">—</div>
+          </div>
+          <div class="rate-detail" id="rateSub2">0W  0L</div>
+        </div>
+        <div class="rate-bar-bg">
+          <div class="rate-bar-fill" id="rateBar2" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- パネルB clone（ループ用） -->
+    <div class="panel panel-2">
+      <div class="streak-side">
+        <div class="streak-words" id="streakWords2">
+          <span class="streak-word">WIN</span>
+          <span class="streak-word">CHAIN</span>
+        </div>
+        <div class="streak-num" id="streakNum2">—</div>
+        <div class="streak-lbl" id="streakLbl2" style="display:none"></div>
+      </div>
+      <div class="vdivider"></div>
+      <div class="history-side">
+        <div class="history-lbl">LAST 10</div>
+        <div class="pips" id="pips2">
+          <div class="pip" id="h10"></div>
+          <div class="pip" id="h11"></div>
+          <div class="pip" id="h12"></div>
+          <div class="pip" id="h13"></div>
+          <div class="pip" id="h14"></div>
+          <div class="pip" id="h15"></div>
+          <div class="pip" id="h16"></div>
+          <div class="pip" id="h17"></div>
+          <div class="pip" id="h18"></div>
+          <div class="pip" id="h19"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="indicator">
+    <div class="dot-ind active" id="d0"></div>
+    <div class="dot-ind" id="d1"></div>
+  </div>
+</div>
+
+<div class="toast">
+  <div class="toast-inner" id="toast"></div>
+</div>
+
+<script>
+const state = { wins: 0, losses: 0, history: [] };
+
+const winVal    = document.getElementById('winVal');
+const lossVal   = document.getElementById('lossVal');
+const winBlock  = document.getElementById('winBlock');
+const lossBlock = document.getElementById('lossBlock');
+const rateBar   = document.getElementById('rateBar');
+const ratePct   = document.getElementById('ratePct');
+const rateSub   = document.getElementById('rateSub');
+const streakNum = document.getElementById('streakNum');
+const streakLbl = document.getElementById('streakLbl');
+const toast     = document.getElementById('toast');
+
+function updateUI(result) {
+  if (result === 'win') {
+    state.wins++;
+    state.history.push('w');
+    flash(winBlock, 'flash-win');
+    bump(winVal);
+    showToast('victory', false);
+  } else {
+    state.losses++;
+    state.history.push('l');
+    flash(lossBlock, 'flash-loss');
+    bump(lossVal);
+    showToast('defeat', true);
+  }
+  if (state.history.length > 10) state.history.shift();
+
+  winVal.textContent  = state.wins;
+  lossVal.textContent = state.losses;
+  rateSub.textContent = state.wins + 'W  ' + state.losses + 'L';
+  document.getElementById('winVal2').textContent  = state.wins;
+  document.getElementById('lossVal2').textContent = state.losses;
+  document.getElementById('rateSub2').textContent = state.wins + 'W  ' + state.losses + 'L';
+
+  const total = state.wins + state.losses;
+  if (total > 0) {
+    const pct = Math.round(state.wins / total * 100);
+    rateBar.style.width = pct + '%';
+    ratePct.textContent = pct + '%';
+    document.getElementById('rateBar2').style.width = pct + '%';
+    document.getElementById('ratePct2').textContent = pct + '%';
+  }
+
+  updateStreak();
+  updatePips();
+}
+
+function updateStreak() {
+  if (!state.history.length) {
+    streakNum.textContent = '—';
+    streakLbl.textContent = 'NO STREAK';
+    return;
+  }
+  const last = state.history[state.history.length - 1];
+  let count = 0;
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    if (state.history[i] === last) count++; else break;
+  }
+  const isWin = last === 'w';
+  // ラベル更新（WIN/LOSS CHAIN）
+  const updateWords = (wordsId) => {
+    const el = document.getElementById(wordsId);
+    el.innerHTML = isWin
+      ? '<span class="streak-word" style="color:#BC2C1A">WIN</span><span class="streak-word" style="color:#BC2C1A">CHAIN</span>'
+      : '<span class="streak-word" style="color:#6883BA">LOSS</span><span class="streak-word" style="color:#6883BA">CHAIN</span>';
+  };
+  updateWords('streakWords');
+  updateWords('streakWords2');
+  streakNum.textContent = count;
+  document.getElementById('streakNum2').textContent = count;
+  // streak-num の色も変える
+  const numColor = isWin ? '#BC2C1A' : '#6883BA';
+  streakNum.style.color = numColor;
+  document.getElementById('streakNum2').style.color = numColor;
+}
+
+function updatePips() {
+  for (let i = 0; i < 10; i++) {
+    const idx = state.history.length - 1 - i;
+    const r = idx >= 0 ? state.history[idx] : null;
+    // オリジナル
+    const el = document.getElementById('h' + i);
+    if (!r) { el.className = 'pip'; el.textContent = ''; }
+    else { el.className = 'pip show ' + r; el.textContent = r === 'w' ? 'W' : 'L'; }
+    // クローン
+    const el2 = document.getElementById('h' + (i + 10));
+    if (!r) { el2.className = 'pip'; el2.textContent = ''; }
+    else { el2.className = 'pip show ' + r; el2.textContent = r === 'w' ? 'W' : 'L'; }
+  }
+}
+
+function flash(el, cls) {
+  el.classList.remove('flash-win', 'flash-loss');
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+function bump(el) {
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+}
+let toastTimer;
+function showToast(msg, isLoss) {
+  clearTimeout(toastTimer);
+  toast.className = 'toast-inner show' + (isLoss ? ' loss' : '');
+  toast.textContent = msg;
+  toastTimer = setTimeout(() => { toast.className = 'toast-inner'; }, 1600);
+}
+
+// ── 無限左スクロール（常に左へ流れる）──
+const slider = document.getElementById('slider');
+const dots = [document.getElementById('d0'), document.getElementById('d1')];
+let pos = 0;        // 現在の位置インデックス（0〜3）
+let dotIdx = 0;     // インジケーター用（0 or 1）
+
+function nextPanel() {
+  pos++;
+  dotIdx = pos % 2;
+  slider.style.transition = 'transform 0.65s cubic-bezier(0.65, 0, 0.35, 1)';
+  slider.style.transform = `translateX(-${pos * 900}px)`;
+  dots.forEach((d, i) => d.className = 'dot-ind' + (i === dotIdx ? ' active' : ''));
+
+  // pos=2 のとき（クローンA表示中）→ トランジション後にpos=0へ瞬間移動
+  // pos=3 のとき（クローンB表示中）→ トランジション後にpos=1へ瞬間移動
+  if (pos >= 2) {
+    setTimeout(() => {
+      slider.style.transition = 'none';
+      pos = pos - 2;
+      slider.style.transform = `translateX(-${pos * 900}px)`;
+    }, 700);
+  }
+}
+
+function goToPanel(n) {
+  pos = n;
+  dotIdx = n % 2;
+  slider.style.transition = 'transform 0.65s cubic-bezier(0.65, 0, 0.35, 1)';
+  slider.style.transform = `translateX(-${pos * 900}px)`;
+  dots.forEach((d, i) => d.className = 'dot-ind' + (i === dotIdx ? ' active' : ''));
+}
+
+setInterval(nextPanel, 5000);
+
+// ── OBS WebSocket（認証なし・OBSプロトコルON）──
+function connectOBS() {
+  const ws = new WebSocket('ws://localhost:4455');
+  ws.onmessage = (event) => {
+    try {
+      const d = JSON.parse(event.data);
+      if (d.op === 0) {
+        ws.send(JSON.stringify({ op: 1, d: { rpcVersion: d.d.rpcVersion, eventSubscriptions: 512 } }));
+      }
+      if (d.op === 5 && d.d.eventIntent === 512) {
+        const msg = d.d.eventData.eventData.message;
+        console.log('[ASS]', msg);
+        if (msg === 'win' || msg === 'loss') {
+          updateUI(msg);
+          goToPanel(0);
+        }
+      }
+    } catch(e) { console.error(e); }
+  };
+  ws.onclose = () => setTimeout(connectOBS, 3000);
+}
+
+connectOBS();
+</script>
+</body>
+</html>
